@@ -56,8 +56,8 @@ open /Applications/WhisperMac.app
 
 ## Платформы
 
-- macOS: поддерживается.
-- Windows: сейчас не поддерживается, так как приложение использует macOS-специфичные `Quartz` и `AppKit`.
+- macOS: поддерживается (`whisper_mac.py`, `mlx-whisper`).
+- Windows: есть порт `whisper_win.py` (`faster-whisper` + `pywin32` вместо `mlx-whisper`/`Quartz`/`AppKit`). См. [`docs/WINDOWS_RU.md`](docs/WINDOWS_RU.md).
 - Linux: не поддерживается в текущей реализации UI и горячих клавиш.
 
 ## Безопасный запуск (рекомендуется)

@@ -27,6 +27,11 @@ build/
 dist/
 *.dSYM/
 WhisperMac.app/
+installer_output/
+
+# Windows runtime files
+whisper_runtime.log
+_paste_test_screenshot.png
 
 
 # Local backups
