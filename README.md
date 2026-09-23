@@ -33,5 +33,4 @@ powershell -ExecutionPolicy Bypass -File scripts\launch_windows.ps1  # запу�
 
 ## Платформы
 
-Только Windows. Это порт [WhisperMac](https://github.com/ranlywood/whispermac-local-case)
-(mac-версия — по ссылке).
+Только Windows. 
