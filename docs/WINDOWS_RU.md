@@ -6,7 +6,7 @@
 
 ## Установка для обычных пользователей (.exe, без Python)
 
-1. Скачай `WhisperWin-Setup.exe` из [Releases](../../releases) этого репозитория.
+1. Скачай `WhisperWin-Setup.exe` из [Releases](https://github.com/msh-ship-it/whisperwin/releases) этого репозитория.
 2. Запусти — установка не требует прав администратора, ставится в
    `%LOCALAPPDATA%\Programs\WhisperWin`. Можно отметить «Создать значок на
    рабочем столе» и «Запускать при включении компьютера».
