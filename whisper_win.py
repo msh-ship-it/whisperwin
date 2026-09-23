@@ -383,10 +383,19 @@ BAR_MAX   = 18.0
 # EQ smoothing
 EQ_ATTACK        = 0.86
 EQ_DECAY         = 0.28
-EQ_RMS_THRESHOLD = 0.0038
 EQ_RMS_ALPHA     = 0.42
-EQ_RMS_FULL      = 0.028
 EQ_VISUAL_GAMMA  = 0.62
+# Адаптивный шумовой пол: раньше "тишина" была захардкожена абсолютным
+# уровнем громкости (EQ_RMS_THRESHOLD=0.0038), откалиброванным под конкретный
+# микрофон/громкость исходного разработчика — на других микрофонах/дистанциях
+# индикатор просто не реагировал (нужно было подносить микрофон к лицу).
+# Вместо этого отслеживаем реальный уровень тишины в комнате и считаем
+# порог/"полную громкость" относительно него — работает на любом микрофоне.
+EQ_NOISE_FLOOR_MIN  = 0.0006  # абсолютный пол на случай выключенного/заглушённого мика
+EQ_NOISE_ADAPT_DOWN = 0.06    # как быстро "пол тишины" опускается к тихим моментам
+EQ_NOISE_ADAPT_UP   = 0.0006  # как быстро он ползёт вверх (медленно, не даёт голосу "стать тишиной")
+EQ_GATE_MULT        = 2.2     # во сколько раз громче пола тишины = "есть голос"
+EQ_FULL_MULT        = 16.0    # во сколько раз громче пола тишины = бары "полные"
 EQ_WOBBLE_MAX    = 0.16
 
 INSTANCE_PORT = int(os.getenv("WHISPERMAC_INSTANCE_PORT", "47563"))
@@ -743,6 +752,7 @@ class App:
         self._eq_levels = np.zeros(BAR_COUNT, dtype=np.float32)
         self._eq_smooth = np.zeros(BAR_COUNT, dtype=np.float32)
         self._rms_smooth = 0.0
+        self._noise_floor = EQ_NOISE_FLOOR_MIN
 
         self._mic_photo_idle   = None
         self._mic_photo_active = None
@@ -1514,7 +1524,18 @@ class App:
         self._rms_smooth = (
             (1.0 - EQ_RMS_ALPHA) * self._rms_smooth + EQ_RMS_ALPHA * rms
         )
-        gate = EQ_RMS_THRESHOLD
+
+        # Подстраиваем оценку "тишины в комнате" под реальный сигнал: быстро
+        # опускаемся к тихим моментам, медленно ползём вверх — так голос не
+        # успевает сам стать новой "тишиной", а разная чувствительность
+        # микрофонов не требует ручной калибровки.
+        if self._rms_smooth < self._noise_floor:
+            self._noise_floor += (self._rms_smooth - self._noise_floor) * EQ_NOISE_ADAPT_DOWN
+        else:
+            self._noise_floor += (self._rms_smooth - self._noise_floor) * EQ_NOISE_ADAPT_UP
+
+        gate = max(EQ_NOISE_FLOOR_MIN, self._noise_floor * EQ_GATE_MULT)
+        full = max(gate + 1e-6, self._noise_floor * EQ_FULL_MULT)
 
         if self._rms_smooth <= gate:
             self._eq_levels[:] = 0
@@ -1532,10 +1553,10 @@ class App:
         peak = levels.max()
         if peak > 1e-6:
             shape = levels / peak
-            denom = max(1e-6, EQ_RMS_FULL - EQ_RMS_THRESHOLD)
+            denom = max(1e-6, full - gate)
             amplitude = min(
                 1.0,
-                max(0.0, (self._rms_smooth - EQ_RMS_THRESHOLD) / denom),
+                max(0.0, (self._rms_smooth - gate) / denom),
             )
             amplitude = amplitude ** 0.72
             self._eq_levels[:] = (shape * amplitude).astype(np.float32)
