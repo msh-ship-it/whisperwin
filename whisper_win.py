@@ -217,6 +217,7 @@ def _encode_for_groq(audio: np.ndarray) -> tuple:
             proc = subprocess.run(
                 [ffmpeg, "-y", "-i", str(src), "-c:a", "aac", "-b:a", "48k", str(dst)],
                 capture_output=True, timeout=30,
+                creationflags=subprocess.CREATE_NO_WINDOW,
             )
             if proc.returncode == 0 and dst.exists() and dst.stat().st_size > 0:
                 return "audio.m4a", dst.read_bytes(), "audio/mp4"
@@ -1833,16 +1834,6 @@ class App:
             log(f"Tk clipboard fallback failed: {ex2}")
             return False
 
-    def _restore_after_paste(self):
-        def restore():
-            try:
-                self.root.attributes("-topmost", True)
-                self.root.attributes("-alpha", 0.96)
-                self.root.lift()
-            except Exception:
-                pass
-        self.root.after(350, restore)
-
     def _paste_and_reset(self, text):
         if not self._copy_to_clipboard(text):
             log("Paste failed: не удалось скопировать текст в буфер обмена")
@@ -1869,25 +1860,29 @@ class App:
         except Exception:
             pass
 
-        was_already_foreground = frontmost_hwnd() == target
-        if not force_foreground(target):
-            log(
-                f"Не удалось перевести фокус на целевое окно "
-                f"(process={target_name or '-'} title='{target_title}' hwnd={target}); "
-                f"текст в буфере обмена, вставь вручную Ctrl+V"
-            )
-            self._restore_after_paste()
-            self._reset()
-            return
-
-        time.sleep(0.08)
-        now_foreground = frontmost_hwnd()
-        if now_foreground != target:
-            log(
-                f"Внимание: после force_foreground foreground-окно другое "
-                f"(ожидали hwnd={target}, реально hwnd={now_foreground}) — "
-                f"Ctrl+V может уйти не туда"
-            )
+        # Если целевое окно и так уже активно (самый частый случай — диктуем
+        # туда же, откуда не уходили), пропускаем весь SetForegroundWindow/ALT
+        # манёвр целиком: даже "успешный" вызов к уже-активному окну заставляет
+        # Windows лишний раз пересчитать z-order/фокус, что на некоторых
+        # системах видно глазом как короткое моргание экрана.
+        already_foreground = frontmost_hwnd() == target
+        if not already_foreground:
+            if not force_foreground(target):
+                log(
+                    f"Не удалось перевести фокус на целевое окно "
+                    f"(process={target_name or '-'} title='{target_title}' hwnd={target}); "
+                    f"текст в буфере обмена, вставь вручную Ctrl+V"
+                )
+                self._reset()
+                return
+            time.sleep(0.08)
+            now_foreground = frontmost_hwnd()
+            if now_foreground != target:
+                log(
+                    f"Внимание: после force_foreground foreground-окно другое "
+                    f"(ожидали hwnd={target}, реально hwnd={now_foreground}) — "
+                    f"Ctrl+V может уйти не туда"
+                )
 
         sent = send_ctrl_v()
         if not sent:
@@ -1896,9 +1891,8 @@ class App:
             log(
                 f"Paste: Ctrl+V отправлен в process={target_name or '-'} "
                 f"title='{target_title}' hwnd={target} "
-                f"(окно {'уже было' if was_already_foreground else 'стало'} активным)"
+                f"(окно {'уже было' if already_foreground else 'стало'} активным)"
             )
-        self._restore_after_paste()
         self._reset()
 
     def _reset(self):
