@@ -1,154 +1,58 @@
-# WhisperMac
+# WhisperWin
 
-Локальный voice-to-text для macOS на `mlx-whisper` без облачных API и без API-ключей.
+Локальный голосовой ввод для Windows: зажал `Right Ctrl`, продиктовал, отпустил —
+текст сам вставился в то окно, где стоял курсор.
 
-Автор материала: [t.me/ei_ai_channel](https://t.me/ei_ai_channel)
+Порт [WhisperMac](https://github.com/ranlywood/whispermac-local-case)
+(автор оригинала: [t.me/ei_ai_channel](https://t.me/ei_ai_channel)) на Windows.
 
-## Что это
+## Быстрый старт
 
-`WhisperMac` записывает голос с микрофона, транскрибирует локально и вставляет текст в активное приложение через `Cmd+V`.
+1. Скачай `WhisperWin-Setup.exe` из [Releases](https://github.com/msh-ship-it/whisperwin/releases).
+2. Запусти — установка не требует прав администратора.
+3. При первом запуске появится окно с предложением ввести бесплатный
+   Groq API-ключ ([console.groq.com/keys](https://console.groq.com/keys)) —
+   можно нажать «Пропустить» и работать полностью локально; ключ всегда
+   можно добавить позже (правый клик по виджету или иконка в трее →
+   «Настроить Groq-ключ...»).
+4. Зажми `Right Ctrl`, диктуй, отпусти — текст вставится в активное окно.
 
-Ключевой фокус этого кейса:
-- низкая задержка для длинных диктовок;
-- стабильное качество без облачных сервисов;
-- контроль приватности (strict local mode + отключаемое логирование).
+## Как это работает
 
-## Почему стало быстрее
+- Голос пишется потоково (`sounddevice`), режется на куски и распознаётся
+  по мере поступления — не нужно ждать окончания записи.
+- Два движка распознавания:
+  - **Groq API** (по умолчанию) — облачный, быстрый (`whisper-large-v3-turbo`).
+  - **faster-whisper** — локальный фоллбэк на случай отсутствия ключа/сети
+    (CPU или CUDA).
+- Фильтры на тишину/галлюцинации и на характерное для Whisper "зацикливание"
+  (повтор одной фразы по кругу).
+- Текст вставляется через буфер обмена + синтетический `Ctrl+V` в окно,
+  которое было активно перед началом записи.
 
-В проекте реализованы 4 принципа:
-- streaming-обработка чанков без повторной конкатенации всего буфера;
-- backlog-flush после stop (без одного гигантского хвоста);
-- адаптивный final-pass только при проблемных случаях;
-- фильтр тишины/галлюцинаций на `no_speech_prob`.
+Подробности архитектуры и известные ограничения — в [`docs/WINDOWS_RU.md`](docs/WINDOWS_RU.md).
 
 ## Приватность
 
-- API-ключи не используются.
-- По умолчанию отключена телеметрия Hugging Face (`HF_HUB_DISABLE_TELEMETRY=1`).
-- Для офлайн режима после первичного кэша модели:
-  - `WHISPERMAC_STRICT_LOCAL=1`
-  - это включает `HF_HUB_OFFLINE=1` и `TRANSFORMERS_OFFLINE=1`.
+- Ключи API нигде не хардкодятся — ключ Groq хранится локально в
+  `%APPDATA%\WhisperWin\config.json`, вводится каждым пользователем сам.
+- Без ключа Groq — работает полностью локально (`faster-whisper`), без сети.
+- Логи (`~/whisper_log.txt`, `~/whisper_runtime.log`) можно отключить —
+  см. [`docs/WINDOWS_RU.md`](docs/WINDOWS_RU.md).
 
 Подробно: [`SECURITY.md`](SECURITY.md)
 
-## Быстрый старт (macOS)
+## Сборка из исходников
 
-```bash
-git clone <your-repo-url>
-cd whispermac-local-case
-./setup.sh
-open /Applications/WhisperMac.app
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup_windows.ps1   # venv + зависимости
+powershell -ExecutionPolicy Bypass -File scripts\launch_windows.ps1  # запуск без сборки exe
 ```
 
-`setup.sh` делает всё необходимое:
-- проверяет Homebrew Python + Tk (>= 8.6);
-- пересоздаёт `venv` на Homebrew Python;
-- ставит зависимости;
-- предзагружает модель;
-- собирает `dist/WhisperMac.app`.
-- обновляет `/Applications/WhisperMac.app` (с backup старой версии).
-
-Разрешения в macOS (важно: именно для `WhisperMac.app`):
-- `System Settings -> Privacy & Security -> Microphone -> WhisperMac ✅`
-- `System Settings -> Privacy & Security -> Accessibility -> WhisperMac ✅`
-- `System Settings -> Privacy & Security -> Input Monitoring -> WhisperMac ✅`
-- если выданы после запуска: перезапусти `WhisperMac.app`
+Сборка `.exe` и установщика — см. [`docs/WINDOWS_RU.md`](docs/WINDOWS_RU.md#сборка-exe-и-инсталлятора).
 
 ## Платформы
 
-- macOS: поддерживается (`whisper_mac.py`, `mlx-whisper`).
-- Windows: есть порт `whisper_win.py` (`faster-whisper` + `pywin32` вместо `mlx-whisper`/`Quartz`/`AppKit`). См. [`docs/WINDOWS_RU.md`](docs/WINDOWS_RU.md).
-- Linux: не поддерживается в текущей реализации UI и горячих клавиш.
-
-## Безопасный запуск (рекомендуется)
-
-```bash
-./scripts/launch_secure.sh
-```
-
-Скрипт запускает приложение с:
-- `WHISPERMAC_STRICT_LOCAL=auto` (включается только если модель уже в кэше)
-- `WHISPERMAC_SAVE_TRANSCRIPTS=1` (логи пишутся в `~/whisper_log.txt`)
-- `WHISPERMAC_SAVE_PERF_LOG=1`
-
-После того как модель уже скачана, можно включить full offline:
-
-```bash
-WHISPERMAC_STRICT_LOCAL=1 ./scripts/launch_secure.sh
-```
-
-По умолчанию hotkey-режим:
-- `Right Option` зажат -> запись;
-- `Right Option` отпущен -> остановка и вставка текста.
-
-Если нужно вернуть старое поведение (только клик по виджету):
-
-```bash
-WHISPERMAC_HOLD_KEY=off ./scripts/launch_secure.sh
-```
-
-Логи транскрибаций:
-- кнопка лога встроена в виджет рядом с крестиком, клик открывает/скрывает окно логов;
-- горячая клавиша: `Cmd+Shift+E` (также поддерживается `Cmd+Shift+H`);
-- источник данных: `~/whisper_log.txt`.
-- диагностический лог вставки/фокуса: `~/whisper_runtime.log` (кнопка `Диагностика` в окне логов).
-
-## Сборка .app bundle (иконка в Dock)
-
-```bash
-./scripts/build_app.sh
-open ./dist/WhisperMac.app
-```
-
-Сборка создаёт native macOS executable внутри `.app`, чтобы macOS показывала `WhisperMac`, а не `bash`, в Privacy & Security permissions.
-
-Если запускать через `.app`, в Dock будет имя и иконка WhisperMac (не Python).
-
-## Запуск без .app (dev mode)
-
-```bash
-./scripts/launch_secure.sh
-```
-
-## Тюнинг
-
-```bash
-export WHISPERMAC_CHUNK_SEC=10
-export WHISPERMAC_WORKER_POLL_SEC=0.20
-export WHISPERMAC_FINAL_PASS_MIN_SEC=15
-export WHISPERMAC_FINAL_PASS_MAX_SEC=95
-python whisper_mac.py
-```
-
-Полезные env:
-- `WHISPERMAC_MODEL_REPO` - HF repo или локальный путь к модели.
-- `WHISPERMAC_LANGUAGE` - язык (по умолчанию `ru`).
-- `WHISPERMAC_PY_FORMULA` - Homebrew Python formula для `setup.sh` (по умолчанию `python@3.12`).
-- `WHISPERMAC_TK_FORMULA` - Homebrew Tk formula для `setup.sh` (по умолчанию `python-tk@3.12`).
-- `WHISPERMAC_STRICT_LOCAL=1` - только локальный режим после кэша.
-- `WHISPERMAC_DOCK_MODE=regular|accessory` - отображение в Dock.
-- `WHISPERMAC_USE_PNG_MIC_ICON=1|0` - включить/выключить PNG-иконку микрофона (по умолчанию `1`).
-- `WHISPERMAC_MIC_ICON=/path/to/mic.png` - кастомная PNG-иконка микрофона.
-- `WHISPERMAC_HOLD_KEY=right_option|off` - режим удержания: зажал `Right Option` -> запись, отпустил -> вставка.
-- `WHISPERMAC_SAVE_TRANSCRIPTS=0` - не писать `~/whisper_log.txt`.
-- `WHISPERMAC_SAVE_PERF_LOG=0` - не писать `~/whisper_perf.log`.
-- `WHISPERMAC_PASTE_SHORTCUT_MODE=auto|osascript|pynput|session|cgevent` - способ отправки `Cmd+V` (по умолчанию `auto`).
-- `WHISPERMAC_RUNTIME_LOG=0` - отключить `~/whisper_runtime.log`.
-
-## Публичный релиз-чек
-
-Перед публикацией прогоняй:
-
-```bash
-./scripts/preflight_share.sh
-```
-
-Скрипт проверяет:
-- потенциальные секреты;
-- персональные абсолютные пути;
-- крупные бинарники, которые не должны попасть в репо.
-
-## Материалы кейса
-
-- Кейс: [`docs/CASE_STUDY_RU.md`](docs/CASE_STUDY_RU.md)
-- Драфт поста: [`docs/POST_DRAFT_RU.md`](docs/POST_DRAFT_RU.md)
+- Windows: поддерживается (этот репозиторий).
+- macOS: см. оригинал — [ranlywood/whispermac-local-case](https://github.com/ranlywood/whispermac-local-case).
+- Linux: не поддерживается.
